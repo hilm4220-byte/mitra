@@ -1,46 +1,64 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/lib/db'
-import { RowDataPacket, ResultSetHeader } from 'mysql2'
+import { supabaseServer } from '@/lib/supabase'
 
-interface Content extends RowDataPacket {
-  id: string
-  key: string
-  title: string
-  content: string
-  type: string
-  order: number
-  is_published: boolean
-  metadata: any
-  created_at: Date
-  updated_at: Date
+// Helper function untuk verify auth
+async function verifyAuth(request: NextRequest) {
+  const token = request.headers.get('authorization')?.replace('Bearer ', '')
+
+  if (!token) {
+    return { user: null, error: 'No token provided' }
+  }
+
+  const { data: { user }, error } = await supabaseServer.auth.getUser(token)
+
+  return { user, error }
 }
 
-// GET - Ambil satu content by ID
+// GET - Ambil satu content by ID (Requires Auth)
 export async function GET(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
   try {
-    const [rows] = await db.pool.execute<Content[]>(
-      'SELECT * FROM contents WHERE id = ?',
-      [params.id]
-    )
+    // Verify authentication
+    const { user, error: authError } = await verifyAuth(request)
 
-    if (rows.length === 0) {
+    if (authError || !user) {
       return NextResponse.json(
-        { success: false, error: 'Content not found' },
-        { status: 404 }
+        { success: false, error: 'Unauthorized' },
+        { status: 401 }
       )
     }
 
-    const content = {
-      ...rows[0],
-      metadata: rows[0].metadata ? JSON.parse(rows[0].metadata as any) : null
+    const { data: content, error } = await supabaseServer
+      .from('contents')
+      .select('*')
+      .eq('id', params.id)
+      .single()
+
+    if (error) {
+      if (error.code === 'PGRST116') { // Not found
+        return NextResponse.json(
+          { success: false, error: 'Content not found' },
+          { status: 404 }
+        )
+      }
+      console.error('Supabase query error:', error)
+      return NextResponse.json(
+        { success: false, error: 'Failed to fetch content' },
+        { status: 500 }
+      )
+    }
+
+    // Parse metadata for response
+    const processedContent = {
+      ...content,
+      metadata: content.metadata ? JSON.parse(content.metadata) : null
     }
 
     return NextResponse.json({
       success: true,
-      data: content
+      data: processedContent
     })
 
   } catch (error) {
@@ -52,73 +70,73 @@ export async function GET(
   }
 }
 
-// PATCH - Update content
+// PATCH - Update content (Requires Auth)
 export async function PATCH(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
   try {
+    // Verify authentication
+    const { user, error: authError } = await verifyAuth(request)
+
+    if (authError || !user) {
+      return NextResponse.json(
+        { success: false, error: 'Unauthorized' },
+        { status: 401 }
+      )
+    }
+
     const body = await request.json()
     const { key, title, content, type, order, isPublished, metadata } = body
 
     // Cek content exists
-    const [existing] = await db.pool.execute<RowDataPacket[]>(
-      'SELECT id FROM contents WHERE id = ?',
-      [params.id]
-    )
+    const { data: existing } = await supabaseServer
+      .from('contents')
+      .select('id')
+      .eq('id', params.id)
+      .single()
 
-    if (existing.length === 0) {
+    if (!existing) {
       return NextResponse.json(
         { success: false, error: 'Content not found' },
         { status: 404 }
       )
     }
 
-    // Build update query
-    const updates: string[] = []
-    const values: any[] = []
+    // Build update object
+    const updates: any = {
+      updated_at: new Date().toISOString(),
+      updated_by: user.id // Track who updated
+    }
 
     if (key !== undefined) {
       // Cek duplikat key
-      const [duplicate] = await db.pool.execute<RowDataPacket[]>(
-        'SELECT id FROM contents WHERE `key` = ? AND id != ?',
-        [key, params.id]
-      )
-      if (duplicate.length > 0) {
+      const { data: duplicate } = await supabaseServer
+        .from('contents')
+        .select('id')
+        .eq('key', key)
+        .neq('id', params.id)
+        .single()
+
+      if (duplicate) {
         return NextResponse.json(
           { success: false, error: 'Key already exists' },
           { status: 400 }
         )
       }
-      updates.push('`key` = ?')
-      values.push(key)
-    }
-    if (title !== undefined) {
-      updates.push('title = ?')
-      values.push(title)
-    }
-    if (content !== undefined) {
-      updates.push('content = ?')
-      values.push(content)
-    }
-    if (type !== undefined) {
-      updates.push('type = ?')
-      values.push(type)
-    }
-    if (order !== undefined) {
-      updates.push('`order` = ?')
-      values.push(order)
-    }
-    if (isPublished !== undefined) {
-      updates.push('is_published = ?')
-      values.push(isPublished)
-    }
-    if (metadata !== undefined) {
-      updates.push('metadata = ?')
-      values.push(metadata ? JSON.stringify(metadata) : null)
+      updates.key = key
     }
 
-    if (updates.length === 0) {
+    if (title !== undefined) updates.title = title
+    if (content !== undefined) updates.content = content
+    if (type !== undefined) updates.type = type
+    if (order !== undefined) updates.order = order
+    if (isPublished !== undefined) updates.is_published = isPublished
+    if (metadata !== undefined) {
+      updates.metadata = metadata ? JSON.stringify(metadata) : null
+    }
+
+    if (Object.keys(updates).length === 2) { // Only updated_at and updated_by
       return NextResponse.json(
         { success: false, error: 'No fields to update' },
         { status: 400 }
@@ -126,26 +144,30 @@ export async function PATCH(
     }
 
     // Update content
-    values.push(params.id)
-    await db.pool.execute(
-      `UPDATE contents SET ${updates.join(', ')} WHERE id = ?`,
-      values
-    )
+    const { data: updatedContent, error } = await supabaseServer
+      .from('contents')
+      .update(updates)
+      .eq('id', params.id)
+      .select()
+      .single()
 
-    // Get updated content
-    const [rows] = await db.pool.execute<Content[]>(
-      'SELECT * FROM contents WHERE id = ?',
-      [params.id]
-    )
+    if (error) {
+      console.error('Supabase update error:', error)
+      return NextResponse.json(
+        { success: false, error: 'Failed to update content' },
+        { status: 500 }
+      )
+    }
 
-    const updatedContent = {
-      ...rows[0],
-      metadata: rows[0].metadata ? JSON.parse(rows[0].metadata as any) : null
+    // Parse metadata for response
+    const processedContent = {
+      ...updatedContent,
+      metadata: updatedContent.metadata ? JSON.parse(updatedContent.metadata) : null
     }
 
     return NextResponse.json({
       success: true,
-      data: updatedContent,
+      data: processedContent,
       message: 'Content updated successfully'
     })
 
@@ -158,19 +180,30 @@ export async function PATCH(
   }
 }
 
-// DELETE - Hapus content
+// DELETE - Hapus content (Requires Auth)
 export async function DELETE(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
   try {
-    // Cek content exists
-    const [existing] = await db.pool.execute<RowDataPacket[]>(
-      'SELECT id FROM contents WHERE id = ?',
-      [params.id]
-    )
+    // Verify authentication
+    const { user, error: authError } = await verifyAuth(request)
 
-    if (existing.length === 0) {
+    if (authError || !user) {
+      return NextResponse.json(
+        { success: false, error: 'Unauthorized' },
+        { status: 401 }
+      )
+    }
+
+    // Cek content exists
+    const { data: existing } = await supabaseServer
+      .from('contents')
+      .select('id')
+      .eq('id', params.id)
+      .single()
+
+    if (!existing) {
       return NextResponse.json(
         { success: false, error: 'Content not found' },
         { status: 404 }
@@ -178,10 +211,18 @@ export async function DELETE(
     }
 
     // Delete content
-    await db.pool.execute<ResultSetHeader>(
-      'DELETE FROM contents WHERE id = ?',
-      [params.id]
-    )
+    const { error } = await supabaseServer
+      .from('contents')
+      .delete()
+      .eq('id', params.id)
+
+    if (error) {
+      console.error('Supabase delete error:', error)
+      return NextResponse.json(
+        { success: false, error: 'Failed to delete content' },
+        { status: 500 }
+      )
+    }
 
     return NextResponse.json({
       success: true,

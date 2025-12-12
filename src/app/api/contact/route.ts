@@ -1,35 +1,46 @@
 // File: app/api/contact/route.ts
-// API PUBLIC untuk mengambil data contact (tanpa perlu login admin)
+// API PUBLIC untuk mengambil data contact (tanpa login)
 
 import { NextResponse } from 'next/server'
-import { db } from '@/lib/db'
-import type { RowDataPacket } from 'mysql2'
+import { supabase } from '@/lib/supabase'
 
-type ContactRecord = RowDataPacket & {
+type ContactRecord = {
   id: string
   type: string
   label: string
   value: string
-  default_message?: string
-  isActive: number
-  createdAt: Date
-  updatedAt: Date
+  defaultMessage?: string
+  isActive: boolean
+  createdAt: string
+  updatedAt: string
 }
 
-// GET - Ambil data kontak (PUBLIC - untuk widget chat dan section Hubungi Kami)
+// GET - Ambil data kontak (PUBLIC)
 export async function GET() {
   try {
-    // Query data kontak yang aktif dengan default_message
-    const contacts = await db.query<ContactRecord>(
-      `SELECT id, type, label, value, default_message, isActive, createdAt, updatedAt 
-       FROM contact_infos 
-       WHERE isActive = 1 
-       ORDER BY FIELD(type, 'address', 'whatsapp', 'email')`
-    )
+    const { data: contacts, error } = await supabase
+      .from('contact_infos')
+      .select('id, type, label, value, default_message, is_active, created_at, updated_at')
+      .eq('is_active', true)
+      .order('type', { ascending: true })
+
+    if (error) throw error
+
+    // Convert snake_case → camelCase
+    const formatted: ContactRecord[] = contacts.map(c => ({
+      id: c.id,
+      type: c.type,
+      label: c.label,
+      value: c.value,
+      defaultMessage: c.default_message,
+      isActive: c.is_active,
+      createdAt: c.created_at,
+      updatedAt: c.updated_at,
+    }))
 
     return NextResponse.json({
       success: true,
-      data: contacts
+      data: formatted
     })
 
   } catch (error) {

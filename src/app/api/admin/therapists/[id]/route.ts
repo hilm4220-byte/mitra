@@ -1,41 +1,32 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/lib/db'
-import type { RowDataPacket } from 'mysql2'
+import { supabaseServer } from '@/lib/supabase'
 
-// Middleware sederhana untuk validasi admin token
-type AdminRecord = RowDataPacket & {
-  id: string
-  isActive: number
-}
-
-type TherapistRecord = RowDataPacket & {
-  id: string
-  registrationId: string
-  fullName: string
-  whatsapp: string
-  address: string
-  gender: string
-  experience: string
-  workArea: string
-  availability: string
-  message: string | null
-  status: string
-  joinedAt: Date
-  updatedAt: Date
-}
-
-function validateAdminToken(request: NextRequest) {
+async function validateAdminToken(request: NextRequest) {
   const authHeader = request.headers.get('authorization')
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
     return null
   }
-  
+
   const token = authHeader.substring(7)
+
   try {
-    const decoded = Buffer.from(token, 'base64').toString('utf-8')
-    const [adminId] = decoded.split(':')
-    return adminId
-  } catch {
+    const { data: { user }, error } = await supabaseServer.auth.getUser(token)
+
+    if (error || !user) {
+      console.error('Token validation error:', error)
+      return null
+    }
+
+    const userRole = user.user_metadata?.role || 'user'
+
+    if (userRole !== 'admin' && userRole !== 'superadmin') {
+      console.warn('User does not have admin role:', userRole)
+      return null
+    }
+
+    return user
+  } catch (error) {
+    console.error('Token validation exception:', error)
     return null
   }
 }
@@ -45,21 +36,8 @@ export async function PATCH(
   { params }: { params: { id: string } }
 ) {
   try {
-    const adminId = validateAdminToken(request)
-    if (!adminId) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      )
-    }
-
-    // Verifikasi admin exists
-    const admin = await db.queryOne<AdminRecord>(
-      `SELECT id FROM admins WHERE id = ? AND isActive = 1 LIMIT 1`,
-      [adminId]
-    )
-
-    if (!admin) {
+    const adminUser = await validateAdminToken(request)
+    if (!adminUser) {
       return NextResponse.json(
         { error: 'Unauthorized' },
         { status: 401 }
@@ -78,58 +56,61 @@ export async function PATCH(
     }
 
     // Cek therapist exists
-    const existingTherapist = await db.queryOne<TherapistRecord>(
-      `SELECT * FROM therapists WHERE id = ? LIMIT 1`,
-      [therapistId]
-    )
+    const { data: existingTherapist, error: fetchError } = await supabaseServer
+      .from('therapists')
+      .select('*')
+      .eq('id', therapistId)
+      .single()
 
-    if (!existingTherapist) {
+    if (fetchError || !existingTherapist) {
       return NextResponse.json(
         { error: 'Terapis tidak ditemukan' },
         { status: 404 }
       )
     }
 
-    // Update therapist
-    const allowedFields = [
-      'fullName',
-      'whatsapp',
-      'address',
-      'gender',
-      'experience',
-      'workArea',
-      'availability',
-      'message',
-    ] as const
+    // Build update object
+    const updates: any = {
+      updated_at: new Date().toISOString()
+    }
 
-    const updates: string[] = []
-    const params: any[] = []
+    // Map field names to database columns
+    const fieldMapping: Record<string, string> = {
+      fullName: 'full_name',
+      whatsapp: 'whatsapp',
+      address: 'address',
+      gender: 'gender',
+      experience: 'experience',
+      workArea: 'work_area',
+      availability: 'availability',
+      message: 'message'
+    }
 
-    for (const field of allowedFields) {
+    for (const [field, dbField] of Object.entries(fieldMapping)) {
       if (Object.prototype.hasOwnProperty.call(updateData, field)) {
-        updates.push(`${field} = ?`)
-        params.push((updateData as Record<string, any>)[field])
+        updates[dbField] = (updateData as Record<string, any>)[field]
       }
     }
 
     if (status) {
-      updates.push(`status = ?`)
-      params.push(status)
+      updates.status = status
     }
 
-    const now = new Date()
-    updates.push('updatedAt = ?')
-    params.push(now)
+    // Update therapist
+    const { data: updatedTherapist, error: updateError } = await supabaseServer
+      .from('therapists')
+      .update(updates)
+      .eq('id', therapistId)
+      .select()
+      .single()
 
-    await db.execute(
-      `UPDATE therapists SET ${updates.join(', ')} WHERE id = ?`,
-      [...params, therapistId]
-    )
-
-    const updatedTherapist = await db.queryOne<TherapistRecord>(
-      `SELECT * FROM therapists WHERE id = ? LIMIT 1`,
-      [therapistId]
-    )
+    if (updateError) {
+      console.error('Supabase update error:', updateError)
+      return NextResponse.json(
+        { error: 'Terjadi kesalahan saat memperbarui data terapis' },
+        { status: 500 }
+      )
+    }
 
     return NextResponse.json({
       success: true,
@@ -151,21 +132,8 @@ export async function DELETE(
   { params }: { params: { id: string } }
 ) {
   try {
-    const adminId = validateAdminToken(request)
-    if (!adminId) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      )
-    }
-
-    // Verifikasi admin exists
-    const admin = await db.queryOne<AdminRecord>(
-      `SELECT id FROM admins WHERE id = ? AND isActive = 1 LIMIT 1`,
-      [adminId]
-    )
-
-    if (!admin) {
+    const adminUser = await validateAdminToken(request)
+    if (!adminUser) {
       return NextResponse.json(
         { error: 'Unauthorized' },
         { status: 401 }
@@ -175,12 +143,13 @@ export async function DELETE(
     const therapistId = params.id
 
     // Cek therapist exists
-    const existingTherapist = await db.queryOne<TherapistRecord>(
-      `SELECT id FROM therapists WHERE id = ? LIMIT 1`,
-      [therapistId]
-    )
+    const { data: existingTherapist, error: fetchError } = await supabaseServer
+      .from('therapists')
+      .select('id')
+      .eq('id', therapistId)
+      .single()
 
-    if (!existingTherapist) {
+    if (fetchError || !existingTherapist) {
       return NextResponse.json(
         { error: 'Terapis tidak ditemukan' },
         { status: 404 }
@@ -188,7 +157,18 @@ export async function DELETE(
     }
 
     // Delete therapist
-    await db.execute(`DELETE FROM therapists WHERE id = ?`, [therapistId])
+    const { error: deleteError } = await supabaseServer
+      .from('therapists')
+      .delete()
+      .eq('id', therapistId)
+
+    if (deleteError) {
+      console.error('Supabase delete error:', deleteError)
+      return NextResponse.json(
+        { error: 'Terjadi kesalahan saat menghapus terapis' },
+        { status: 500 }
+      )
+    }
 
     return NextResponse.json({
       success: true,

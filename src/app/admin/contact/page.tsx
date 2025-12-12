@@ -24,7 +24,7 @@ interface ContactInfo {
   type: string
   label: string
   value: string
-  default_message?: string  // TAMBAHAN BARU
+  defaultMessage?: string  // Optional, gunakan camelCase (dari API conversion)
   isActive: boolean
   createdAt: string
   updatedAt: string
@@ -41,13 +41,17 @@ export default function AdminContact() {
 
   useEffect(() => {
     setMounted(true)
+    checkAuth()
+  }, [])
+
+  const checkAuth = async () => {
     const token = localStorage.getItem('adminToken')
     if (!token) {
       router.push('/admin/login')
       return
     }
     fetchContacts(token)
-  }, [router])
+  }
 
   const fetchContacts = async (token: string) => {
     try {
@@ -66,18 +70,20 @@ export default function AdminContact() {
 
       const result = await response.json()
       if (result.success) {
+        console.log('Fetched contacts:', result.data)
         setContacts(result.data)
       } else {
         setError(result.error || 'Gagal mengambil data')
       }
     } catch (error) {
+      console.error('Fetch error:', error)
       setError('Terjadi kesalahan jaringan')
     } finally {
       setIsLoading(false)
     }
   }
 
-  const handleContactChange = (type: string, field: 'label' | 'value' | 'default_message', value: string) => {
+  const handleContactChange = (type: string, field: keyof ContactInfo, value: string) => {
     setContacts(prev => 
       prev.map(contact => 
         contact.type === type ? { ...contact, [field]: value } : contact
@@ -87,13 +93,19 @@ export default function AdminContact() {
 
   const handleSave = async () => {
     const token = localStorage.getItem('adminToken')
-    if (!token) return
+    if (!token) {
+      setError('Session expired. Please login again.')
+      router.push('/admin/login')
+      return
+    }
 
     setIsSaving(true)
     setError('')
     setSuccess('')
 
     try {
+      console.log('Saving contacts:', contacts)
+      
       const response = await fetch('/api/admin/contact', {
         method: 'PUT',
         headers: {
@@ -104,13 +116,18 @@ export default function AdminContact() {
       })
 
       const result = await response.json()
+      console.log('Save result:', result)
+      
       if (result.success) {
         setSuccess('Informasi kontak berhasil disimpan!')
+        // Refresh data dari server
+        await fetchContacts(token)
         setTimeout(() => setSuccess(''), 3000)
       } else {
         setError(result.error || 'Gagal menyimpan kontak')
       }
     } catch (error) {
+      console.error('Save error:', error)
       setError('Terjadi kesalahan saat menyimpan')
     } finally {
       setIsSaving(false)
@@ -119,7 +136,7 @@ export default function AdminContact() {
 
   const getContactIcon = (type: string) => {
     switch (type) {
-      case 'address':
+      case 'alamat':
         return <MapPin className="h-5 w-5 text-green-600" />
       case 'whatsapp':
         return <Phone className="h-5 w-5 text-green-600" />
@@ -132,7 +149,7 @@ export default function AdminContact() {
 
   const getContactLabel = (type: string) => {
     switch (type) {
-      case 'address':
+      case 'alamat':
         return 'Alamat'
       case 'whatsapp':
         return 'Nomor WhatsApp'
@@ -186,14 +203,14 @@ export default function AdminContact() {
           <>
             {success && (
               <Alert className="mb-6 border-green-200 bg-green-50">
-                <CheckCircle className="h-4 w-4" />
-                <AlertDescription>{success}</AlertDescription>
+                <CheckCircle className="h-4 w-4 text-green-600" />
+                <AlertDescription className="text-green-800">{success}</AlertDescription>
               </Alert>
             )}
             
             {error && (
               <Alert className="mb-6 border-red-200 bg-red-50">
-                <AlertDescription>{error}</AlertDescription>
+                <AlertDescription className="text-red-800">{error}</AlertDescription>
               </Alert>
             )}
 
@@ -245,7 +262,7 @@ export default function AdminContact() {
                       )}
                     </div>
 
-                    {/* BAGIAN BARU: PESAN OTOMATIS WHATSAPP */}
+                    {/* PESAN OTOMATIS WHATSAPP */}
                     {contact.type === 'whatsapp' && (
                       <div className="space-y-3 pt-4 border-t">
                         <div className="flex items-center gap-2 text-green-700">
@@ -256,8 +273,8 @@ export default function AdminContact() {
                         </div>
                         <Textarea
                           id={`message-${contact.type}`}
-                          value={contact.default_message || ''}
-                          onChange={(e) => handleContactChange(contact.type, 'default_message', e.target.value)}
+                          value={contact.defaultMessage || ''}
+                          onChange={(e) => handleContactChange(contact.type, 'defaultMessage', e.target.value)}
                           className="mt-1 resize-none"
                           rows={4}
                           placeholder="Contoh: Halo, saya ingin bertanya tentang layanan PijatJogja..."
@@ -267,11 +284,11 @@ export default function AdminContact() {
                         </p>
                         
                         {/* Preview Pesan */}
-                        {contact.default_message && (
+                        {contact.defaultMessage && (
                           <div className="bg-green-50 p-4 rounded-lg border border-green-200">
                             <p className="text-xs font-medium text-green-900 mb-2">Preview Pesan:</p>
                             <div className="bg-white p-3 rounded-lg border border-green-200 text-sm text-gray-700">
-                              {contact.default_message}
+                              {contact.defaultMessage}
                             </div>
                           </div>
                         )}
@@ -281,9 +298,9 @@ export default function AdminContact() {
                     {contact.type === 'whatsapp' && contact.value && (
                       <div className="bg-green-50 p-4 rounded-lg border border-green-200">
                         <p className="text-sm font-medium text-green-900 mb-2">Preview Link WhatsApp:</p>
-                        <p className="text-xs text-green-700 break-all">
+                        <p className="text-xs text-green-700 break-all font-mono">
                           https://wa.me/{contact.value.replace(/[^0-9]/g, '').replace(/^0/, '62')}
-                          {contact.default_message && `?text=${encodeURIComponent(contact.default_message)}`}
+                          {contact.defaultMessage && `?text=${encodeURIComponent(contact.defaultMessage)}`}
                         </p>
                         <Button
                           variant="outline"
@@ -292,7 +309,7 @@ export default function AdminContact() {
                           onClick={() => {
                             const cleaned = contact.value.replace(/[^0-9]/g, '')
                             const formatted = cleaned.startsWith('0') ? '62' + cleaned.substring(1) : cleaned.startsWith('62') ? cleaned : '62' + cleaned
-                            const message = contact.default_message ? `?text=${encodeURIComponent(contact.default_message)}` : ''
+                            const message = contact.defaultMessage ? `?text=${encodeURIComponent(contact.defaultMessage)}` : ''
                             window.open(`https://wa.me/${formatted}${message}`, '_blank')
                           }}
                         >

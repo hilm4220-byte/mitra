@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 
 interface Admin {
-  id: number;
+  id: string;
   username: string;
   email: string;
   full_name: string;
@@ -21,11 +21,9 @@ export default function AdminContentPage() {
   const [editMode, setEditMode] = useState(false);
   const [currentAdmin, setCurrentAdmin] = useState<Admin | null>(null);
   const [formData, setFormData] = useState({
-    username: '',
     email: '',
     password: '',
     full_name: '',
-    role: 'superadmin',
     isActive: 1
   });
 
@@ -38,7 +36,13 @@ export default function AdminContentPage() {
       setLoading(true);
       setError('');
       
-      const response = await fetch('/api/content?table=admins');
+      const token = localStorage.getItem('adminToken');
+      
+      const response = await fetch('/api/admin/users', {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
       
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
@@ -65,11 +69,9 @@ export default function AdminContentPage() {
     setEditMode(false);
     setCurrentAdmin(null);
     setFormData({
-      username: '',
       email: '',
       password: '',
       full_name: '',
-      role: 'superadmin',
       isActive: 1
     });
     setShowModal(true);
@@ -79,19 +81,17 @@ export default function AdminContentPage() {
     setEditMode(true);
     setCurrentAdmin(admin);
     setFormData({
-      username: admin.username,
       email: admin.email,
       password: '',
       full_name: admin.full_name,
-      role: admin.role,
       isActive: admin.isActive
     });
     setShowModal(true);
   };
 
   const handleSimpan = async () => {
-    if (!formData.username || !formData.email || !formData.full_name) {
-      alert('Username, email, dan nama lengkap harus diisi!');
+    if (!formData.email || !formData.full_name) {
+      alert('Email dan nama lengkap harus diisi!');
       return;
     }
 
@@ -101,13 +101,13 @@ export default function AdminContentPage() {
     }
 
     try {
+      const token = localStorage.getItem('adminToken');
       let response;
       
       if (editMode && currentAdmin) {
         const updateData: any = {
           email: formData.email,
           full_name: formData.full_name,
-          role: formData.role,
           isActive: formData.isActive
         };
 
@@ -115,15 +115,21 @@ export default function AdminContentPage() {
           updateData.password = formData.password;
         }
 
-        response = await fetch(`/api/content?table=admins&id=${currentAdmin.id}`, {
+        response = await fetch(`/api/admin/users/${currentAdmin.id}`, {
           method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
           body: JSON.stringify(updateData)
         });
       } else {
-        response = await fetch('/api/content?table=admins', {
+        response = await fetch('/api/admin/users', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
           body: JSON.stringify(formData)
         });
       }
@@ -143,12 +149,17 @@ export default function AdminContentPage() {
     }
   };
 
-  const handleHapus = async (id: number) => {
+  const handleHapus = async (id: string) => {
     if (!confirm('Yakin ingin menghapus admin ini?')) return;
 
     try {
-      const response = await fetch(`/api/content?table=admins&id=${id}`, {
-        method: 'DELETE'
+      const token = localStorage.getItem('adminToken');
+      
+      const response = await fetch(`/api/admin/users/${id}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
       });
 
       const data = await response.json();
@@ -167,9 +178,14 @@ export default function AdminContentPage() {
 
   const handleToggleStatus = async (admin: Admin) => {
     try {
-      const response = await fetch(`/api/content?table=admins&id=${admin.id}`, {
+      const token = localStorage.getItem('adminToken');
+      
+      const response = await fetch(`/api/admin/users/${admin.id}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
         body: JSON.stringify({
           isActive: admin.isActive === 1 ? 0 : 1
         })
@@ -341,12 +357,12 @@ export default function AdminContentPage() {
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Username <span className="text-red-500">*</span>
+                  Email <span className="text-red-500">*</span>
                 </label>
                 <input
-                  type="text"
-                  value={formData.username}
-                  onChange={(e) => setFormData({ ...formData, username: e.target.value })}
+                  type="email"
+                  value={formData.email}
+                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                   disabled={editMode}
                 />
@@ -360,18 +376,6 @@ export default function AdminContentPage() {
                   type="text"
                   value={formData.full_name}
                   onChange={(e) => setFormData({ ...formData, full_name: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Email <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="email"
-                  value={formData.email}
-                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>

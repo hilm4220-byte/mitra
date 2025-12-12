@@ -1,22 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/lib/db'
-import type { RowDataPacket } from 'mysql2'
+import { supabase } from '@/lib/supabase'
 import { randomUUID } from 'crypto'
-
-type RegistrationRecord = RowDataPacket & {
-  id: string
-  fullName: string
-  whatsapp: string
-  address: string
-  gender: string
-  experience: string
-  workArea: string
-  availability: string
-  message: string | null
-  status: string
-  submittedAt: Date
-  updatedAt: Date
-}
 
 export async function POST(request: NextRequest) {
   try {
@@ -41,8 +25,8 @@ export async function POST(request: NextRequest) {
     }
 
     // Validasi format WhatsApp
-    const whatsappRegex = /^08[0-9]{8,12}$/
     const cleanWhatsapp = whatsapp.replace(/[^0-9]/g, '')
+    const whatsappRegex = /^08[0-9]{8,12}$/
     if (!whatsappRegex.test(cleanWhatsapp)) {
       return NextResponse.json(
         { error: 'Format nomor WhatsApp tidak valid. Gunakan format 08xx-xxxx-xxxx' },
@@ -50,43 +34,30 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Simpan ke database
     const now = new Date()
     const registrationId = randomUUID()
 
-    await db.execute(
-      `INSERT INTO therapist_registrations (
-        id,
-        fullName,
-        whatsapp,
+    // ========================
+    // INSERT DENGAN NAMA KOLOM BENAR
+    // ========================
+    const { error: insertError } = await supabase
+      .from('therapist_registrations')
+      .insert({
+        id: registrationId,
+        full_name: fullName,
+        whatsapp: cleanWhatsapp,
         address,
         gender,
         experience,
-        workArea,
+        work_area: workArea,
         availability,
-        message,
-        status,
-        submittedAt,
-        updatedAt
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        registrationId,
-        fullName,
-        cleanWhatsapp,
-        address,
-        gender,
-        experience,
-        workArea,
-        availability,
-        message || null,
-        'PENDING',
-        now,
-        now,
-      ]
-    )
+        message: message || null,
+        status: 'PENDING',
+        submitted_at: now.toISOString(),
+        updated_at: now.toISOString()
+      })
 
-    // TODO: Kirim notifikasi ke admin
-    // TODO: Kirim konfirmasi WhatsApp ke calon mitra
+    if (insertError) throw insertError
 
     return NextResponse.json({
       success: true,
@@ -105,15 +76,20 @@ export async function POST(request: NextRequest) {
 
 export async function GET() {
   try {
-    const registrations = await db.query<RegistrationRecord>(
-      `SELECT * FROM therapist_registrations
-       ORDER BY submittedAt DESC
-       LIMIT 50`
-    )
+    // ============================
+    // TABEL BENAR + KOLUMN BENAR
+    // ============================
+    const { data, error } = await supabase
+      .from('therapist_registrations')
+      .select('*')
+      .order('submitted_at', { ascending: false })
+      .limit(50)
+
+    if (error) throw error
 
     return NextResponse.json({
       success: true,
-      registrations
+      registrations: data
     })
 
   } catch (error) {

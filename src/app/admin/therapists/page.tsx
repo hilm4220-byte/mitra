@@ -11,7 +11,6 @@ import {
   Users, 
   Search, 
   Filter, 
-  Eye, 
   ArrowLeft,
   Loader2,
   ChevronLeft,
@@ -303,35 +302,55 @@ export default function AdminTherapists() {
           <CardContent>
             <div className="space-y-4">
               {therapists.map((therapist) => (
-                <div key={therapist.id} className="border rounded-lg p-4 hover:bg-gray-50 transition-colors">
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1">
-                      <div className="flex items-center space-x-3 mb-2">
-                        <h3 className="font-semibold text-lg">{therapist.fullName}</h3>
-                        {getStatusBadge(therapist.status)}
+                <div key={therapist.id} className="border rounded-lg p-6 hover:shadow-md transition-all bg-white">
+                  <div className="flex items-start justify-between mb-4">
+                    <div className="flex items-center space-x-3">
+                      <div className="h-12 w-12 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-semibold text-lg">
+                        {therapist.fullName.charAt(0).toUpperCase()}
                       </div>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm text-gray-600">
-                        <p><strong>WhatsApp:</strong> {therapist.whatsapp}</p>
-                        <p><strong>Jenis Kelamin:</strong> {therapist.gender === 'male' ? 'Laki-laki' : 'Perempuan'}</p>
-                        <p><strong>Pengalaman:</strong> {therapist.experience} tahun</p>
-                        <p><strong>Area Kerja:</strong> {therapist.workArea}</p>
-                        <p className="md:col-span-2"><strong>Alamat:</strong> {therapist.address}</p>
-                        <p className="md:col-span-2"><strong>Ketersediaan:</strong> {therapist.availability}</p>
-                      </div>
-                      <div className="mt-3 text-xs text-gray-500">
-                        <p>Bergabung: {formatDate(therapist.joinedAt)}</p>
-                        <p>Didaftar: {formatDate(therapist.registration?.submittedAt)}</p>
+                      <div>
+                        <h3 className="font-semibold text-lg text-gray-900">{therapist.fullName}</h3>
+                        <p className="text-sm text-gray-500">{therapist.whatsapp}</p>
                       </div>
                     </div>
-                    <div className="flex flex-col space-y-2 ml-4">
-                      <Button 
-                        variant="outline" 
-                        size="sm"
-                        onClick={() => router.push(`/admin/therapists/${therapist.id}`)}
-                      >
-                        <Eye className="h-4 w-4 mr-2" />
-                        Detail
-                      </Button>
+                    {getStatusBadge(therapist.status)}
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                    <div className="space-y-1">
+                      <p className="text-xs text-gray-500 uppercase">Jenis Kelamin</p>
+                      <p className="text-sm font-medium text-gray-900">
+                        {therapist.gender === 'male' ? 'Laki-laki' : 'Perempuan'}
+                      </p>
+                    </div>
+                    <div className="space-y-1">
+                      <p className="text-xs text-gray-500 uppercase">Pengalaman</p>
+                      <p className="text-sm font-medium text-gray-900">{therapist.experience} tahun</p>
+                    </div>
+                    <div className="space-y-1">
+                      <p className="text-xs text-gray-500 uppercase">Area Kerja</p>
+                      <p className="text-sm font-medium text-gray-900">{therapist.workArea}</p>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2 mb-4">
+                    <div>
+                      <p className="text-xs text-gray-500 uppercase">Alamat</p>
+                      <p className="text-sm text-gray-700">{therapist.address}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-gray-500 uppercase">Ketersediaan</p>
+                      <p className="text-sm text-gray-700">{therapist.availability}</p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between pt-4 border-t">
+                    <div className="flex gap-4 text-xs text-gray-500">
+                      <span>Bergabung: {formatDate(therapist.joinedAt)}</span>
+                      <span>•</span>
+                      <span>Didaftar: {formatDate(therapist.registration?.submittedAt)}</span>
+                    </div>
+                    <div className="flex gap-2">
                       {therapist.status === 'ACTIVE' && (
                         <Button 
                           variant="secondary" 

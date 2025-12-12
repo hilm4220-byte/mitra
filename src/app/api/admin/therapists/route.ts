@@ -1,281 +1,160 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/lib/db'
-import type { RowDataPacket } from 'mysql2'
+import { supabaseServer } from '@/lib/supabase'
 import { randomUUID } from 'crypto'
 
-// Middleware sederhana untuk validasi admin token
-type AdminRecord = RowDataPacket & {
-  id: string
-  isActive: number
-}
-
-type TherapistRow = RowDataPacket & {
-  id: string
-  registrationId: string
-  fullName: string
-  whatsapp: string
-  address: string
-  gender: string
-  experience: string
-  workArea: string
-  availability: string
-  message: string | null
-  status: string
-  joinedAt: Date
-  updatedAt: Date
-  registrationSubmittedAt: Date | null
-  registrationMessage: string | null
-}
-
-type TherapistWithRegistration = RowDataPacket & {
-  id: string
-  registrationId: string
-  fullName: string
-  whatsapp: string
-  address: string
-  gender: string
-  experience: string
-  workArea: string
-  availability: string
-  message: string | null
-  status: string
-  joinedAt: Date
-  updatedAt: Date
-  registrationSubmittedAt: Date | null
-  registrationMessage: string | null
-}
-
-type CountRow = RowDataPacket & {
-  total: number
-}
-
-function validateAdminToken(request: NextRequest) {
+// =====================
+// VALIDATE ADMIN TOKEN
+// =====================
+async function validateAdminToken(request: NextRequest) {
   const authHeader = request.headers.get('authorization')
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return null
-  }
-  
+  if (!authHeader || !authHeader.startsWith('Bearer ')) return null
+
   const token = authHeader.substring(7)
-  try {
-    const decoded = Buffer.from(token, 'base64').toString('utf-8')
-    const [adminId] = decoded.split(':')
-    return adminId
-  } catch {
-    return null
-  }
+
+  const { data: { user }, error } = await supabaseServer.auth.getUser(token)
+  if (error || !user) return null
+
+  const role = user.user_metadata?.role || 'user'
+  if (role !== 'admin' && role !== 'superadmin') return null
+
+  return user
 }
 
+// =====================
+// GET THERAPISTS
+// =====================
 export async function GET(request: NextRequest) {
-  try {
-    const adminId = validateAdminToken(request)
-    if (!adminId) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      )
-    }
+  console.log('\n=== GET THERAPISTS (SUPABASE) ===')
 
-    // Verifikasi admin exists
-    const admin = await db.queryOne<AdminRecord>(
-      `SELECT id, isActive FROM admins WHERE id = ? AND isActive = 1 LIMIT 1`,
-      [adminId]
+  const user = await validateAdminToken(request)
+  if (!user) {
+    return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
+  }
+
+  console.log('Admin validated:', user.email)
+
+  const { searchParams } = new URL(request.url)
+  const page = parseInt(searchParams.get('page') || '1')
+  const limit = parseInt(searchParams.get('limit') || '10')
+  const status = searchParams.get('status')
+  const search = searchParams.get('search')
+
+  console.log('Query params:', { page, limit, status, search })
+
+  const from = (page - 1) * limit
+  const to = from + limit - 1
+
+  // === Build Supabase query (TANPA JOIN dulu untuk testing) ===
+  let query = supabaseServer
+    .from('therapists')
+    .select('*', { count: 'exact' })
+    .order('joined_at', { ascending: false })
+    .range(from, to)
+
+  if (status && status !== 'all') {
+    query = query.eq('status', status.toUpperCase())
+  }
+
+  if (search) {
+    query = query.or(
+      `full_name.ilike.%${search}%,` +
+      `whatsapp.ilike.%${search}%,` +
+      `address.ilike.%${search}%`
     )
+  }
 
-    if (!admin) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      )
-    }
+  const { data: therapists, error, count } = await query
 
-    // Ambil data terapis dengan pagination
-    const { searchParams } = new URL(request.url)
-    const page = parseInt(searchParams.get('page') || '1')
-    const limit = parseInt(searchParams.get('limit') || '10')
-    const status = searchParams.get('status') || undefined
-    const search = searchParams.get('search') || undefined
-
-    const skip = (page - 1) * limit
-
-    const filters: string[] = []
-    const filterParams: any[] = []
-
-    if (status) {
-      filters.push('t.status = ?')
-      filterParams.push(status)
-    }
-
-    if (search) {
-      filters.push('(t.fullName LIKE ? OR t.whatsapp LIKE ? OR t.address LIKE ?)')
-      const likeValue = `%${search}%`
-      filterParams.push(likeValue, likeValue, likeValue)
-    }
-
-    const whereClause = filters.length ? `WHERE ${filters.join(' AND ')}` : ''
-
-    const therapists = await db.query<TherapistRow>(
-      `SELECT t.*, tr.submittedAt AS registrationSubmittedAt, tr.message AS registrationMessage
-       FROM therapists t
-       LEFT JOIN therapist_registrations tr ON tr.id = t.registrationId
-       ${whereClause}
-       ORDER BY t.joinedAt DESC
-       LIMIT ? OFFSET ?`,
-      [...filterParams, limit, skip]
-    )
-
-    const countRow = await db.queryOne<CountRow>(
-      `SELECT COUNT(*) AS total FROM therapists t
-       ${whereClause}`,
-      filterParams
-    )
-
-    return NextResponse.json({
-      success: true,
-      data: therapists.map((therapist) => ({
-        id: therapist.id,
-        registrationId: therapist.registrationId,
-        fullName: therapist.fullName,
-        whatsapp: therapist.whatsapp,
-        address: therapist.address,
-        gender: therapist.gender,
-        experience: therapist.experience,
-        workArea: therapist.workArea,
-        availability: therapist.availability,
-        message: therapist.message,
-        status: therapist.status,
-        joinedAt: therapist.joinedAt,
-        updatedAt: therapist.updatedAt,
-        registration: therapist.registrationSubmittedAt
-          ? {
-              submittedAt: therapist.registrationSubmittedAt,
-              message: therapist.registrationMessage,
-            }
-          : null,
-      })),
-      pagination: {
-        page,
-        limit,
-        total: countRow?.total ?? 0,
-        pages: Math.ceil((countRow?.total ?? 0) / limit)
-      }
-    })
-
-  } catch (error) {
-    console.error('Get therapists error:', error)
+  if (error) {
+    console.error('Supabase query error:', error)
     return NextResponse.json(
-      { error: 'Terjadi kesalahan saat mengambil data' },
+      { success: false, error: 'Gagal mengambil data: ' + error.message },
       { status: 500 }
     )
   }
+
+  console.log('Found therapists:', therapists?.length || 0)
+
+  // === Normalize output (snake_case ke camelCase) ===
+  const normalized = (therapists || []).map((t: any) => ({
+    id: t.id,
+    registrationId: t.registration_id,
+    fullName: t.full_name,
+    whatsapp: t.whatsapp,
+    address: t.address,
+    gender: t.gender,
+    experience: t.experience,
+    workArea: t.work_area,
+    availability: t.availability,
+    message: t.message,
+    status: t.status,
+    joinedAt: t.joined_at,
+    updatedAt: t.updated_at,
+  }))
+
+  return NextResponse.json({
+    success: true,
+    data: normalized,
+    pagination: {
+      page,
+      limit,
+      total: count || 0,
+      pages: Math.ceil((count || 0) / limit)
+    }
+  })
 }
 
+
+// ===========================
+// POST — ADD THERAPIST
+// ===========================
 export async function POST(request: NextRequest) {
   try {
-    const adminId = validateAdminToken(request)
-    if (!adminId) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      )
-    }
+    const user = await validateAdminToken(request)
+    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-    // Verifikasi admin exists
-    const admin = await db.queryOne<AdminRecord>(
-      `SELECT id FROM admins WHERE id = ? AND isActive = 1 LIMIT 1`,
-      [adminId]
-    )
+    const body = await request.json()
 
-    if (!admin) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      )
-    }
-
-    const therapistData = await request.json()
-
-    // Validasi required fields
-    const requiredFields = ['fullName', 'whatsapp', 'address', 'gender', 'experience', 'workArea', 'availability']
-    for (const field of requiredFields) {
-      if (!therapistData[field]) {
-        return NextResponse.json(
-          { error: `Field ${field} harus diisi` },
-          { status: 400 }
-        )
+    const required = ['fullName','whatsapp','address','gender','experience','workArea','availability']
+    for (const f of required) {
+      if (!body[f]) {
+        return NextResponse.json({ error: `Field ${f} harus diisi` }, { status: 400 })
       }
     }
 
-    // Cek duplikasi WhatsApp
-    const existingTherapist = await db.queryOne<RowDataPacket & { id: string }>(
-      `SELECT id FROM therapists WHERE whatsapp = ? LIMIT 1`,
-      [therapistData.whatsapp]
-    )
-
-    if (existingTherapist) {
-      return NextResponse.json(
-        { error: 'Nomor WhatsApp sudah terdaftar' },
-        { status: 400 }
-      )
-    }
-
-    // Buat therapist baru
     const therapistId = randomUUID()
-    const registrationId = therapistData.registrationId || `manual_${Date.now()}`
     const now = new Date()
 
-    await db.execute(
-      `INSERT INTO therapists (
-        id,
-        registrationId,
-        fullName,
-        whatsapp,
-        address,
-        gender,
-        experience,
-        workArea,
-        availability,
-        message,
-        status,
-        joinedAt,
-        updatedAt
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        therapistId,
-        registrationId,
-        therapistData.fullName,
-        therapistData.whatsapp,
-        therapistData.address,
-        therapistData.gender,
-        therapistData.experience,
-        therapistData.workArea,
-        therapistData.availability,
-        therapistData.message ?? null,
-        therapistData.status || 'ACTIVE',
-        now,
-        now,
-      ]
-    )
+    const { error } = await supabaseServer
+      .from('therapists')
+      .insert({
+        id: therapistId,
+        registration_id: body.registrationId || `manual_${Date.now()}`,
+        full_name: body.fullName,
+        whatsapp: body.whatsapp,
+        address: body.address,
+        gender: body.gender,
+        experience: body.experience,
+        work_area: body.workArea,
+        availability: body.availability,
+        message: body.message || null,
+        status: body.status || 'ACTIVE',
+        joined_at: now.toISOString(),
+        updated_at: now.toISOString()
+      })
 
-    const therapist = await db.queryOne<TherapistWithRegistration>(
-      `SELECT t.*, tr.submittedAt AS registrationSubmittedAt, tr.message AS registrationMessage
-       FROM therapists t
-       LEFT JOIN therapist_registrations tr ON tr.id = t.registrationId
-       WHERE t.id = ?
-       LIMIT 1`,
-      [therapistId]
-    )
+    if (error) {
+      console.error('Insert error:', error)
+      return NextResponse.json({ error: error.message }, { status: 500 })
+    }
 
     return NextResponse.json({
       success: true,
-      message: 'Terapis berhasil ditambahkan',
-      data: therapist
+      message: 'Terapis berhasil ditambahkan'
     })
 
-  } catch (error) {
-    console.error('Create therapist error:', error)
-    return NextResponse.json(
-      { error: 'Terjadi kesalahan saat menambah terapis' },
-      { status: 500 }
-    )
+  } catch (err) {
+    console.error('Create therapist error:', err)
+    return NextResponse.json({ error: 'Terjadi kesalahan' }, { status: 500 })
   }
 }

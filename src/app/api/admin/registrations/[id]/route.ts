@@ -1,130 +1,119 @@
+// app/api/admin/registrations/[id]/route.ts
 import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/lib/db'
-import type { RowDataPacket } from 'mysql2'
-import { randomUUID } from 'crypto'
+import { supabaseServer } from '@/lib/supabase'
 
-// Middleware sederhana untuk validasi admin token
-type AdminRecord = RowDataPacket & {
-  id: string
-  isActive: number
-}
-
-type RegistrationRecord = RowDataPacket & {
-  id: string
-  fullName: string
-  whatsapp: string
-  address: string
-  gender: string
-  experience: string
-  workArea: string
-  availability: string
-  message: string | null
-  status: string
-  submittedAt: Date
-  updatedAt: Date
-}
-
-type RegistrationWithTherapist = RowDataPacket & {
-  id: string
-  fullName: string
-  whatsapp: string
-  address: string
-  gender: string
-  experience: string
-  workArea: string
-  availability: string
-  message: string | null
-  status: string
-  submittedAt: Date
-  updatedAt: Date
-  therapistId: string | null
-  therapistStatus: string | null
-  therapistJoinedAt: Date | null
-}
-
-function validateAdminToken(request: NextRequest) {
+async function validateAdminToken(request: NextRequest) {
   const authHeader = request.headers.get('authorization')
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
     return null
   }
   
   const token = authHeader.substring(7)
+  
   try {
-    const decoded = Buffer.from(token, 'base64').toString('utf-8')
-    const [adminId] = decoded.split(':')
-    return adminId
+    const { data: { user }, error } = await supabaseServer.auth.getUser(token)
+    
+    if (error || !user) return null
+    
+    const userRole = user.user_metadata?.role || 'user'
+    
+    if (userRole !== 'admin' && userRole !== 'superadmin') return null
+    
+    return user
   } catch {
     return null
   }
 }
 
-export async function PATCH(
+export async function GET(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  context: { params: Promise<{ id: string }> }
 ) {
-  console.log('\n=== START PATCH REGISTRATION ===')
-  
   try {
-    // Await params first (Next.js 15 requirement)
-    const { id: registrationId } = await params
-    console.log('   Registration ID:', registrationId)
-
-    const adminId = validateAdminToken(request)
-    if (!adminId) {
-      console.log('   ✗ Unauthorized - no token')
+    const user = await validateAdminToken(request)
+    if (!user) {
       return NextResponse.json(
-        { error: 'Unauthorized' },
+        { success: false, error: 'Unauthorized' },
         { status: 401 }
       )
     }
-    console.log('   ✓ Admin ID:', adminId)
 
-    // Verifikasi admin exists
-    const admin = await db.queryOne<AdminRecord>(
-      `SELECT id FROM admins WHERE id = ? AND isActive = 1 LIMIT 1`,
-      [adminId]
-    )
+    const { id } = await context.params
 
-    if (!admin) {
-      console.log('   ✗ Admin not found')
+    const { data: registration, error } = await supabaseServer
+      .from('therapist_registrations')
+      .select('*')
+      .eq('id', id)
+      .single()
+
+    if (error) {
+      console.error('Supabase error:', error)
       return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      )
-    }
-    console.log('   ✓ Admin verified')
-
-    const body = await request.json()
-    const { action, notes } = body
-
-    console.log('   Registration ID:', registrationId)
-    console.log('   Action:', action)
-    console.log('   Notes:', notes ? 'YES' : 'NO')
-
-    // UPDATED: Terima APPROVE, REJECT, dan PENDING
-    if (!action || !['APPROVE', 'REJECT', 'PENDING'].includes(action)) {
-      console.log('   ✗ Invalid action:', action)
-      return NextResponse.json(
-        { error: `Action harus APPROVE, REJECT, atau PENDING. Diterima: ${action}` },
-        { status: 400 }
-      )
-    }
-    console.log('   ✓ Action valid')
-
-    // Ambil data pendaftaran
-    const registration = await db.queryOne<RegistrationRecord>(
-      `SELECT * FROM therapist_registrations WHERE id = ? LIMIT 1`,
-      [registrationId]
-    )
-
-    if (!registration) {
-      console.log('   ✗ Registration not found')
-      return NextResponse.json(
-        { error: 'Data pendaftaran tidak ditemukan' },
+        { success: false, error: 'Data tidak ditemukan' },
         { status: 404 }
       )
     }
-    console.log('   ✓ Registration found, current status:', registration.status)
+
+    // Mapping dari snake_case ke camelCase
+    const normalized = {
+      id: registration.id,
+      fullName: registration.full_name,
+      whatsapp: registration.whatsapp,
+      address: registration.address,
+      gender: registration.gender,
+      experience: registration.experience,
+      workArea: registration.work_area,
+      availability: registration.availability,
+      message: registration.message,
+      status: registration.status,
+      submittedAt: registration.submitted_at,
+      updatedAt: registration.updated_at,
+    }
+
+    return NextResponse.json({
+      success: true,
+      data: normalized
+    })
+
+  } catch (error: any) {
+    console.error('GET registration error:', error)
+    return NextResponse.json(
+      { success: false, error: 'Terjadi kesalahan' },
+      { status: 500 }
+    )
+  }
+}
+
+export async function PATCH(
+  request: NextRequest,
+  context: { params: Promise<{ id: string }> }
+) {
+  console.log('\n=== PATCH REGISTRATION (SUPABASE) ===')
+  
+  try {
+    const user = await validateAdminToken(request)
+    if (!user) {
+      return NextResponse.json(
+        { success: false, error: 'Unauthorized' },
+        { status: 401 }
+      )
+    }
+
+    const { id } = await context.params
+    const body = await request.json()
+    const { action, notes } = body
+
+    console.log('Registration ID:', id)
+    console.log('Action:', action)
+    console.log('Notes:', notes ? 'YES' : 'NO')
+
+    // Validasi action
+    if (!action || !['APPROVE', 'REJECT', 'PENDING'].includes(action)) {
+      return NextResponse.json(
+        { success: false, error: 'Action tidak valid' },
+        { status: 400 }
+      )
+    }
 
     // Map action ke status
     const statusMap: Record<string, string> = {
@@ -133,163 +122,103 @@ export async function PATCH(
       'PENDING': 'PENDING'
     }
     const newStatus = statusMap[action]
-    const now = new Date()
 
-    console.log('   Updating to status:', newStatus)
+    // Get existing registration
+    const { data: existingReg, error: fetchError } = await supabaseServer
+      .from('therapist_registrations')
+      .select('*')
+      .eq('id', id)
+      .single()
 
-    await db.transaction(async (connection) => {
-      // Update status dengan atau tanpa notes
-      if (notes) {
-        await connection.execute(
-          `UPDATE therapist_registrations SET status = ?, notes = ?, updatedAt = ? WHERE id = ?`,
-          [newStatus, notes, now, registrationId]
-        )
-      } else {
-        await connection.execute(
-          `UPDATE therapist_registrations SET status = ?, updatedAt = ? WHERE id = ?`,
-          [newStatus, now, registrationId]
-        )
-      }
-
-      // Jika APPROVE, buat therapist account
-      if (action === 'APPROVE') {
-        console.log('   Creating therapist account...')
-        
-        // Cek apakah sudah ada therapist
-        const existingTherapist = await connection.execute(
-          'SELECT id FROM therapists WHERE registrationId = ? LIMIT 1',
-          [registrationId]
-        )
-
-        if (existingTherapist[0] && Array.isArray(existingTherapist[0]) && existingTherapist[0].length === 0) {
-          await connection.execute(
-            `INSERT INTO therapists (
-              id,
-              registrationId,
-              fullName,
-              whatsapp,
-              address,
-              gender,
-              experience,
-              workArea,
-              availability,
-              message,
-              status,
-              joinedAt,
-              updatedAt
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-            [
-              randomUUID(),
-              registration.id,
-              registration.fullName,
-              registration.whatsapp,
-              registration.address,
-              registration.gender,
-              registration.experience,
-              registration.workArea,
-              registration.availability,
-              registration.message,
-              'ACTIVE',
-              now,
-              now,
-            ]
-          )
-          console.log('   ✓ Therapist created')
-        } else {
-          console.log('   ℹ Therapist already exists')
-        }
-      }
-    })
-
-    console.log('   ✓ Transaction completed')
-
-    const updatedRegistration = await db.queryOne<RegistrationRecord>(
-      `SELECT * FROM therapist_registrations WHERE id = ? LIMIT 1`,
-      [registrationId]
-    )
-
-    console.log('=== END PATCH REGISTRATION (SUCCESS) ===\n')
-
-    return NextResponse.json({
-      success: true,
-      message: `Pendaftaran berhasil ${action === 'APPROVE' ? 'disetujui' : action === 'REJECT' ? 'ditolak' : 'diubah'}`,
-      data: updatedRegistration
-    })
-
-  } catch (error) {
-    console.error('\n=== ERROR PATCH REGISTRATION ===')
-    console.error('Error type:', error?.constructor?.name)
-    console.error('Error message:', error instanceof Error ? error.message : String(error))
-    console.error('Error stack:', error instanceof Error ? error.stack : 'No stack')
-    console.error('=== END ERROR ===\n')
-    
-    return NextResponse.json(
-      { error: 'Terjadi kesalahan saat memproses pendaftaran' },
-      { status: 500 }
-    )
-  }
-}
-
-export async function GET(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
-  try {
-    const adminId = validateAdminToken(request)
-    if (!adminId) {
+    if (fetchError || !existingReg) {
+      console.error('Registration not found:', fetchError)
       return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      )
-    }
-
-    const registration = await db.queryOne<RegistrationWithTherapist>(
-      `SELECT tr.*, t.id AS therapistId, t.status AS therapistStatus, t.joinedAt AS therapistJoinedAt
-       FROM therapist_registrations tr
-       LEFT JOIN therapists t ON t.registrationId = tr.id
-       WHERE tr.id = ?
-       LIMIT 1`,
-      [params.id]
-    )
-
-    if (!registration) {
-      return NextResponse.json(
-        { error: 'Data pendaftaran tidak ditemukan' },
+        { success: false, error: 'Pendaftaran tidak ditemukan' },
         { status: 404 }
       )
     }
 
-    const normalizedRegistration = {
-      id: registration.id,
-      fullName: registration.fullName,
-      whatsapp: registration.whatsapp,
-      address: registration.address,
-      gender: registration.gender,
-      experience: registration.experience,
-      workArea: registration.workArea,
-      availability: registration.availability,
-      message: registration.message,
-      status: registration.status,
-      submittedAt: registration.submittedAt,
-      updatedAt: registration.updatedAt,
-      therapist: registration.therapistId
-        ? {
-            id: registration.therapistId,
-            status: registration.therapistStatus,
-            joinedAt: registration.therapistJoinedAt,
-          }
-        : null,
+    console.log('Current status:', existingReg.status)
+
+    // Update registration status - PAKAI SNAKE_CASE!
+    const updateData: any = {
+      status: newStatus,
+      updated_at: new Date().toISOString() // ✅ FIXED: snake_case
+    }
+
+    if (notes) {
+      updateData.notes = notes
+    }
+
+    const { error: updateError } = await supabaseServer
+      .from('therapist_registrations')
+      .update(updateData)
+      .eq('id', id)
+
+    if (updateError) {
+      console.error('Update error:', updateError)
+      return NextResponse.json(
+        { success: false, error: 'Gagal mengubah status: ' + updateError.message },
+        { status: 500 }
+      )
+    }
+
+    console.log('Status updated to:', newStatus)
+
+    // Jika APPROVED, buat therapist account
+    if (action === 'APPROVE') {
+      console.log('Creating therapist account...')
+      
+      // Check if therapist already exists
+      const { data: existingTherapist } = await supabaseServer
+        .from('therapists')
+        .select('id')
+        .eq('registration_id', id) // ✅ FIXED: snake_case
+        .single()
+
+      if (!existingTherapist) {
+        // INSERT dengan snake_case sesuai database
+        const { error: insertError } = await supabaseServer
+          .from('therapists')
+          .insert({
+            registration_id: id,                    // ✅ snake_case
+            full_name: existingReg.full_name,       // ✅ snake_case
+            whatsapp: existingReg.whatsapp,
+            address: existingReg.address,
+            gender: existingReg.gender,
+            experience: existingReg.experience,
+            work_area: existingReg.work_area,       // ✅ snake_case
+            availability: existingReg.availability,
+            message: existingReg.message,
+            status: 'ACTIVE',
+            joined_at: new Date().toISOString(),    // ✅ snake_case
+            updated_at: new Date().toISOString()    // ✅ snake_case
+          })
+
+        if (insertError) {
+          console.error('Failed to create therapist:', insertError)
+          // Tidak return error, karena update status sudah berhasil
+        } else {
+          console.log('Therapist created successfully')
+        }
+      } else {
+        console.log('Therapist already exists')
+      }
     }
 
     return NextResponse.json({
       success: true,
-      data: normalizedRegistration
+      message: `Pendaftaran berhasil ${action === 'APPROVE' ? 'disetujui' : action === 'REJECT' ? 'ditolak' : 'diubah'}`,
+      data: {
+        id: id,
+        status: newStatus
+      }
     })
 
-  } catch (error) {
-    console.error('Get registration error:', error)
+  } catch (error: any) {
+    console.error('PATCH error:', error)
     return NextResponse.json(
-      { error: 'Terjadi kesalahan saat mengambil data' },
+      { success: false, error: 'Terjadi kesalahan: ' + error.message },
       { status: 500 }
     )
   }

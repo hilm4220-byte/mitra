@@ -1,7 +1,10 @@
 'use client'
 
-import { useState } from 'react'
+// React & Next.js
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
+
+// UI Components
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -12,12 +15,48 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion'
-import { Phone, Mail, MapPin, Clock, DollarSign, Users, Award, CheckCircle, Star, MessageCircle, ChevronRight, Sparkles, Heart, Shield, Zap, Image, Loader2 } from 'lucide-react'
+
+// Icons
+import { 
+  Phone, 
+  Mail, 
+  MapPin, 
+  Clock, 
+  DollarSign, 
+  Users, 
+  Award, 
+  CheckCircle, 
+  Star, 
+  MessageCircle, 
+  ChevronRight, 
+  Sparkles, 
+  Heart, 
+  Shield, 
+  Zap, 
+  Image, 
+  Loader2 
+} from 'lucide-react'
+
+// Custom Hooks
 import { useContent } from '@/hooks/use-content'
+
+// Type untuk Contact
+interface ContactItem {
+  id: string
+  type: string
+  label: string
+  value: string
+  default_message?: string
+  isActive: boolean
+  createdAt: string
+  updatedAt: string
+}
 
 export default function Home() {
   const router = useRouter()
-  const { data: contentData, isLoading: contentLoading, getBenefits, getContactByType } = useContent()
+  const { data: contentData, isLoading: contentLoading, getBenefits } = useContent()
+  
+  // State untuk form
   const [formData, setFormData] = useState({
     fullName: '',
     whatsapp: '',
@@ -31,6 +70,55 @@ export default function Home() {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [submitStatus, setSubmitStatus] = useState<'idle' | 'success' | 'error'>('idle')
   const [submitMessage, setSubmitMessage] = useState('')
+
+  // State untuk contact section
+  const [contacts, setContacts] = useState<ContactItem[]>([])
+  const [isLoadingContacts, setIsLoadingContacts] = useState(true)
+  const [contactError, setContactError] = useState('')
+
+  // Fetch contacts untuk section contact
+  useEffect(() => {
+    fetchContacts()
+  }, [])
+
+  const fetchContacts = async () => {
+    try {
+      const response = await fetch('/api/contact')
+      const result = await response.json()
+      
+      console.log('📞 API Contact Response:', result)
+      
+      if (result.success && result.data) {
+        console.log('✅ Contacts loaded:', result.data)
+        console.log('📊 Total contacts:', result.data.length)
+        
+        // Log each contact type
+        result.data.forEach((contact: ContactItem) => {
+          console.log(`   🔹 ${contact.type}: ${contact.value}`)
+        })
+        
+        setContacts(result.data)
+        
+        // Verify state after set
+        setTimeout(() => {
+          console.log('🔄 State after set:', result.data)
+        }, 100)
+      } else {
+        console.error('❌ No data received')
+        setContactError('Gagal mengambil data kontak')
+      }
+    } catch (err) {
+      console.error('❌ Error fetching contacts:', err)
+      setContactError('Terjadi kesalahan')
+    } finally {
+      setIsLoadingContacts(false)
+    }
+  }
+
+  // Get contact by type
+  const getContactByType = (type: string): ContactItem | undefined => {
+    return contacts.find(c => c.type === type && c.isActive)
+  }
 
   const scrollToForm = () => {
     const formElement = document.getElementById('registration-form')
@@ -61,11 +149,28 @@ export default function Home() {
   }
 
   const handleOpenChat = () => {
-    // Trigger chat button click
-    const chatButton = document.getElementById('chat-toggle-btn')
-    if (chatButton) {
-      chatButton.click()
+    const whatsappContact = getContactByType('whatsapp')
+    
+    if (!whatsappContact?.value) {
+      alert('Nomor WhatsApp belum tersedia')
+      return
     }
+
+    // Clean dan format nomor
+    const cleaned = whatsappContact.value.replace(/[^0-9]/g, '')
+    const formatted = cleaned.startsWith('0') 
+      ? '62' + cleaned.substring(1) 
+      : cleaned.startsWith('62') 
+      ? cleaned 
+      : '62' + cleaned
+
+    // Buat URL dengan default message jika ada
+    const message = whatsappContact.default_message 
+      ? `?text=${encodeURIComponent(whatsappContact.default_message)}` 
+      : ''
+    
+    const whatsappUrl = `https://wa.me/${formatted}${message}`
+    window.open(whatsappUrl, '_blank')
   }
 
   const sanitizePhoneNumber = (value: string) => value.replace(/[^0-9]/g, '')
@@ -114,9 +219,6 @@ export default function Home() {
   }
 
   const benefits = getBenefits()
-  const addressContact = getContactByType('address')
-  const whatsappContact = getContactByType('whatsapp')
-  const emailContact = getContactByType('email')
 
   if (contentLoading) {
     return (
@@ -497,7 +599,6 @@ export default function Home() {
                 </Button>
               </form>
               
-              {/* Status Messages */}
               {submitStatus === 'success' && (
                 <div className="mt-6 p-4 bg-green-50 border border-green-200 rounded-lg">
                   <div className="flex items-center space-x-2">
@@ -643,46 +744,156 @@ export default function Home() {
       </section>
 
       {/* Kontak & Bantuan */}
-      <section id="contact-section" className="py-16 bg-gradient-to-br from-green-600 to-emerald-700 text-white">
-        <div className="container mx-auto px-4">
+<section id="contact-section" className="py-16 bg-gradient-to-br from-green-600 to-emerald-700 text-white">
+  <div className="container mx-auto px-4">
+    {(() => {
+      // Debug logs
+      console.log('🎨 RENDERING Contact Section')
+      console.log('📦 contacts state:', contacts)
+      console.log('📍 alamat:', getContactByType('alamat'))
+      console.log('📱 whatsapp:', getContactByType('whatsapp'))
+      console.log('📧 email:', getContactByType('email'))
+      
+      if (isLoadingContacts) {
+        return (
+          <div className="flex items-center justify-center py-12">
+            <Loader2 className="h-8 w-8 animate-spin text-white" />
+          </div>
+        )
+      }
+      
+      if (contactError) {
+        return (
+          <div className="text-center text-white/80">
+            <p>{contactError}</p>
+          </div>
+        )
+      }
+      
+      const alamatContact = getContactByType('alamat')
+      const waContact = getContactByType('whatsapp')
+      const mailContact = getContactByType('email')
+      
+      // Fungsi untuk membuka WhatsApp dengan pesan otomatis
+      const handleOpenChat = () => {
+        if (waContact?.value) {
+          // Format nomor WhatsApp (hapus karakter non-digit)
+          let phoneNumber = waContact.value.replace(/\D/g, '');
+          
+          // Jika nomor dimulai dengan 0, ganti dengan 62
+          if (phoneNumber.startsWith('0')) {
+            phoneNumber = '62' + phoneNumber.substring(1);
+          }
+          
+          // Jika tidak dimulai dengan 62, tambahkan 62
+          if (!phoneNumber.startsWith('62')) {
+            phoneNumber = '62' + phoneNumber;
+          }
+          
+          // Ambil pesan dari default_message atau defaultMessage (dengan type safety)
+          const contactWithMessage = waContact as any;
+          const message = contactWithMessage?.default_message || 
+                         contactWithMessage?.defaultMessage || 
+                         'Halo, saya ingin bertanya lebih lanjut tentang layanan Anda.';
+          
+          // Encode pesan untuk URL
+          const encodedMessage = encodeURIComponent(message);
+          
+          // Buat URL WhatsApp
+          const whatsappUrl = `https://api.whatsapp.com/send?phone=${phoneNumber}&text=${encodedMessage}`;
+          
+          // Debug log
+          console.log('📱 Opening WhatsApp:', {
+            originalNumber: waContact.value,
+            formattedNumber: phoneNumber,
+            message: message,
+            url: whatsappUrl
+          });
+          
+          // Buka di tab/window baru
+          window.open(whatsappUrl, '_blank');
+        } else {
+          console.error('❌ Nomor WhatsApp tidak tersedia');
+        }
+      };
+      
+      return (
+        <>
           <div className="text-center mb-12">
             <h2 className="text-3xl lg:text-4xl font-bold mb-4">📞 Hubungi Kami</h2>
             <p className="text-xl text-white/90">Ingin bertanya lebih lanjut? Tim kami siap membantu Anda.</p>
           </div>
+          
           <div className="max-w-4xl mx-auto">
             <div className="grid md:grid-cols-3 gap-8 mb-12">
+              {/* Card Alamat */}
               <Card className="bg-white/10 backdrop-blur-sm border-white/20 text-white">
                 <CardContent className="p-6 text-center">
                   <MapPin className="w-8 h-8 mx-auto mb-4" />
-                  <h3 className="font-bold text-lg mb-2">Alamat</h3>
-                  <p className="text-white/80">{addressContact?.value || 'Jl. Malioboro No. 123, Jogja'}</p>
+                  <h3 className="font-bold text-lg mb-2">
+                    {alamatContact?.label || 'Alamat'}
+                  </h3>
+                  <p className="text-white/80">
+                    {alamatContact?.value || 'Jl. Contoh No. 123, Yogyakarta'}
+                  </p>
                 </CardContent>
               </Card>
+
+              {/* Card WhatsApp */}
               <Card className="bg-white/10 backdrop-blur-sm border-white/20 text-white">
                 <CardContent className="p-6 text-center">
                   <Phone className="w-8 h-8 mx-auto mb-4" />
-                  <h3 className="font-bold text-lg mb-2">WhatsApp</h3>
-                  <p className="text-white/80">{whatsappContact?.value || '0812-3456-7890'}</p>
+                  <h3 className="font-bold text-lg mb-2">
+                    {waContact?.label || 'WhatsApp'}
+                  </h3>
+                  <p className="text-white/80">
+                    {waContact?.value || '0812-3456-7890'}
+                  </p>
                 </CardContent>
               </Card>
+
+              {/* Card Email */}
               <Card className="bg-white/10 backdrop-blur-sm border-white/20 text-white">
                 <CardContent className="p-6 text-center">
                   <Mail className="w-8 h-8 mx-auto mb-4" />
-                  <h3 className="font-bold text-lg mb-2">Email</h3>
-                  <p className="text-white/80">{emailContact?.value || 'info@pijatjogja.com'}</p>
+                  <h3 className="font-bold text-lg mb-2">
+                    {mailContact?.label || 'Email'}
+                  </h3>
+                  <p className="text-white/80">
+                    {mailContact?.value || 'info@example.com'}
+                  </p>
                 </CardContent>
               </Card>
             </div>
+
+            {/* Tombol Chat */}
             <div className="text-center">
-              <Button id="contact-chat-btn" size="lg" onClick={handleOpenChat} className="bg-white text-green-600 hover:bg-green-50 px-8 py-4 text-lg font-semibold">
+              <Button 
+                id="contact-chat-btn" 
+                size="lg" 
+                onClick={handleOpenChat}
+                disabled={!waContact?.value}
+                className="bg-white text-green-600 hover:bg-green-50 px-8 py-4 text-lg font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+              >
                 <MessageCircle className="mr-2 w-5 h-5" />
                 Chat Admin Sekarang
               </Button>
+              {(() => {
+                const contactWithMessage = waContact as any;
+                return (contactWithMessage?.default_message || contactWithMessage?.defaultMessage) && (
+                  <p className="text-sm text-white/70 mt-3">
+                    💬 Pesan otomatis akan dikirim
+                  </p>
+                );
+              })()}
             </div>
           </div>
-        </div>
-      </section>
-
+        </>
+      )
+    })()}
+  </div>
+</section>
+   
       {/* Footer */}
       <footer id="footer-section" className="bg-gray-900 text-white py-8">
         <div className="container mx-auto px-4">

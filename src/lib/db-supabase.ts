@@ -1,4 +1,3 @@
-// File: lib/db.ts
 import { supabase, supabaseAdmin } from './supabase'
 
 export type QueryRow<T = any> = T
@@ -24,13 +23,8 @@ async function queryOne<T = any>(table: string, filters?: Record<string, any>) {
   return results[0] ?? null
 }
 
-// Execute insert/update/delete operations
-async function execute(
-  operation: 'insert' | 'update' | 'delete',
-  table: string,
-  payload?: any,
-  filters?: Record<string, any>
-) {
+// Execute insert/update/delete
+async function execute(operation: 'insert' | 'update' | 'delete', table: string, payload?: any, filters?: Record<string, any>) {
   const admin = supabaseAdmin || supabase
 
   try {
@@ -74,7 +68,7 @@ async function execute(
   }
 }
 
-// Raw SQL query untuk operasi kompleks
+// Raw SQL query (untuk operasi kompleks)
 async function rawQuery<T = any>(sql: string, params?: any[]) {
   const admin = supabaseAdmin || supabase
 
@@ -87,9 +81,10 @@ async function rawQuery<T = any>(sql: string, params?: any[]) {
   return data as T[]
 }
 
-// Transaction simulation (Supabase menangani di level database)
+// Transaction simulation
 async function transaction<T>(handler: (db: typeof db) => Promise<T>): Promise<T> {
   try {
+    // Supabase menangani transactions di level database
     const result = await handler(db)
     return result
   } catch (error) {

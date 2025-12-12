@@ -1,34 +1,37 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/lib/db'
-import type { RowDataPacket } from 'mysql2'
+import { supabase } from '@/lib/supabase'
 
-type WebsiteContentRecord = RowDataPacket & {
+type WebsiteContentRecord = {
   id: string
   key: string
   title: string
   subtitle: string | null
   content: string | null
-  isActive: number
-  createdAt: Date
-  updatedAt: Date
+  isActive: boolean
+  createdAt: string
+  updatedAt: string
 }
 
-type ContactRecord = RowDataPacket & {
+type ContactRecord = {
   id: string
   type: string
   label: string
   value: string
-  isActive: number
-  createdAt: Date
-  updatedAt: Date
+  isActive: boolean
+  createdAt: string
+  updatedAt: string
 }
 
 export async function GET(request: NextRequest) {
   try {
-    // Ambil semua konten website yang aktif
-    const contents = await db.query<WebsiteContentRecord>(
-      `SELECT * FROM website_contents WHERE isActive = 1 ORDER BY \`key\` ASC`
-    )
+    // Ambil semua konten website yang aktif dari table contents
+    const { data: contents, error: contentsError } = await supabase
+      .from('contents')
+      .select('*')
+      .eq('is_published', true)
+      .order('key', { ascending: true })
+
+    if (contentsError) throw contentsError
 
     // Group by key prefix
     const groupedContent: Record<string, any> = {}
@@ -45,9 +48,13 @@ export async function GET(request: NextRequest) {
     })
 
     // Ambil kontak info yang aktif
-    const contacts = await db.query<ContactRecord>(
-      `SELECT * FROM contact_infos WHERE isActive = 1 ORDER BY type ASC`
-    )
+    const { data: contacts, error: contactsError } = await supabase
+      .from('contact_infos')
+      .select('*')
+      .eq('isactive', true)
+      .order('type', { ascending: true })
+
+    if (contactsError) throw contactsError
 
     return NextResponse.json({
       success: true,
