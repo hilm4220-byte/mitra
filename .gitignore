@@ -47,5 +47,14 @@ test
 prompt
 
 server.log
+
 # Local Netlify folder
 .netlify
+
+# Windows batch files (TAMBAHKAN INI)
+*.bat
+run-sql-editor.bat
+
+# Supabase local files (TAMBAHKAN INI JUGA)
+supabase/.branches
+supabase/.temp
