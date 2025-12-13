@@ -3,3 +3,22 @@
 
 [[plugins]]
   package = "@netlify/plugin-nextjs"
+
+# Abaikan key public yang memang aman untuk di-expose
+[build.processing.secrets]
+  SECRETS_SCAN_OMIT_KEYS = [
+    "NEXT_PUBLIC_SUPABASE_URL",
+    "NEXT_PUBLIC_SUPABASE_ANON_KEY"
+  ]
+  SECRETS_SCAN_OMIT_PATHS = [
+    "run-sql-editor.bat"
+  ]
+```
+
+## Penting Juga:
+
+Pastikan file `run-sql-editor.bat` tidak masuk ke git repository karena berisi `SUPABASE_SERVICE_ROLE_KEY` yang sensitif. Tambahkan ke `.gitignore`:
+```
+# .gitignore
+run-sql-editor.bat
+*.bat
