@@ -1,19 +1,27 @@
 // lib/supabase.ts
 import { createClient } from '@supabase/supabase-js'
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
+const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
 
-if (!supabaseUrl || !supabaseAnonKey) {
-  throw new Error('Missing Supabase environment variables. Check .env.local file.')
-}
+// ❗❗ NOTE PENTING
+// Jangan throw error di sini (build-time), biarkan error terjadi di runtime API routes
 
-// Client for server-side (API routes) - GUNAKAN SERVICE ROLE KEY
-// Service role key bypass RLS policies
-export const supabaseServer = createClient(
-  supabaseUrl, 
-  supabaseServiceKey || supabaseAnonKey, // Fallback ke anon key kalau service key belum ada
+// Client for client-side (browser)
+export const supabase = createClient(supabaseUrl, anonKey, {
+  auth: {
+    autoRefreshToken: true,
+    persistSession: true,
+    detectSessionInUrl: true
+  }
+})
+
+// Client untuk admin/server — HARUS NAMANYA `supabaseAdmin`
+// karena file lain mencari export ini
+export const supabaseAdmin = createClient(
+  supabaseUrl,
+  serviceRoleKey || anonKey,
   {
     auth: {
       autoRefreshToken: false,
@@ -22,14 +30,5 @@ export const supabaseServer = createClient(
     }
   }
 )
-
-// Client for client-side (browser) - TETAP PAKAI ANON KEY
-export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-  auth: {
-    autoRefreshToken: true,
-    persistSession: true,
-    detectSessionInUrl: true
-  }
-})
 
 export default supabase
