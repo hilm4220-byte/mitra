@@ -5,7 +5,6 @@ const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
 
-// Client for client-side (browser)
 export const supabase = createClient(supabaseUrl, anonKey, {
   auth: {
     autoRefreshToken: true,
@@ -14,7 +13,6 @@ export const supabase = createClient(supabaseUrl, anonKey, {
   }
 })
 
-// Client untuk admin/server
 export const supabaseAdmin = createClient(
   supabaseUrl,
   serviceRoleKey || anonKey,
@@ -27,7 +25,7 @@ export const supabaseAdmin = createClient(
   }
 )
 
-// ✅ TAMBAHKAN INI (ALIAS)
+// 🔥 INI YANG PENTING
 export const supabaseServer = supabaseAdmin
 
 export default supabase
