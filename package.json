@@ -2,10 +2,9 @@
   "name": "nextjs_tailwind_shadcn_ts",
   "version": "0.1.0",
   "private": true,
- "engines": {
-  "node": ">=20 <22"
-},
-
+  "engines": {
+    "node": ">=20 <22"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",
