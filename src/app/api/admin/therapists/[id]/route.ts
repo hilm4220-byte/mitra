@@ -33,9 +33,11 @@ async function validateAdminToken(request: NextRequest) {
 
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
+
     const adminUser = await validateAdminToken(request)
     if (!adminUser) {
       return NextResponse.json(
@@ -45,7 +47,7 @@ export async function PATCH(
     }
 
     const { status, ...updateData } = await request.json()
-    const therapistId = params.id
+    const therapistId = id
 
     // Validasi status
     if (status && !['ACTIVE', 'INACTIVE', 'SUSPENDED'].includes(status)) {
@@ -129,9 +131,11 @@ export async function PATCH(
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
+
     const adminUser = await validateAdminToken(request)
     if (!adminUser) {
       return NextResponse.json(
@@ -140,7 +144,7 @@ export async function DELETE(
       )
     }
 
-    const therapistId = params.id
+    const therapistId = id
 
     // Cek therapist exists
     const { data: existingTherapist, error: fetchError } = await supabaseServer

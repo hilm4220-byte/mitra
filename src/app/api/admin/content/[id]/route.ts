@@ -17,9 +17,11 @@ async function verifyAuth(request: NextRequest) {
 // GET - Ambil satu content by ID (Requires Auth)
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
+
     // Verify authentication
     const { user, error: authError } = await verifyAuth(request)
 
@@ -33,7 +35,7 @@ export async function GET(
     const { data: content, error } = await supabaseServer
       .from('contents')
       .select('*')
-      .eq('id', params.id)
+      .eq('id', id)
       .single()
 
     if (error) {
@@ -73,9 +75,11 @@ export async function GET(
 // PATCH - Update content (Requires Auth)
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
+
     // Verify authentication
     const { user, error: authError } = await verifyAuth(request)
 
@@ -93,7 +97,7 @@ export async function PATCH(
     const { data: existing } = await supabaseServer
       .from('contents')
       .select('id')
-      .eq('id', params.id)
+      .eq('id', id)
       .single()
 
     if (!existing) {
@@ -115,7 +119,7 @@ export async function PATCH(
         .from('contents')
         .select('id')
         .eq('key', key)
-        .neq('id', params.id)
+        .neq('id', id)
         .single()
 
       if (duplicate) {
@@ -147,7 +151,7 @@ export async function PATCH(
     const { data: updatedContent, error } = await supabaseServer
       .from('contents')
       .update(updates)
-      .eq('id', params.id)
+      .eq('id', id)
       .select()
       .single()
 
@@ -183,9 +187,11 @@ export async function PATCH(
 // DELETE - Hapus content (Requires Auth)
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
+
     // Verify authentication
     const { user, error: authError } = await verifyAuth(request)
 
@@ -200,7 +206,7 @@ export async function DELETE(
     const { data: existing } = await supabaseServer
       .from('contents')
       .select('id')
-      .eq('id', params.id)
+      .eq('id', id)
       .single()
 
     if (!existing) {
@@ -214,7 +220,7 @@ export async function DELETE(
     const { error } = await supabaseServer
       .from('contents')
       .delete()
-      .eq('id', params.id)
+      .eq('id', id)
 
     if (error) {
       console.error('Supabase delete error:', error)

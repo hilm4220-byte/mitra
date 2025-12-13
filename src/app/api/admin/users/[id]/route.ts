@@ -12,9 +12,11 @@ async function verifyAuth(request: NextRequest) {
 // PUT - Update user
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
+
     const { user, error: authError } = await verifyAuth(request)
 
     if (authError || !user) {
@@ -31,7 +33,7 @@ export async function PUT(
 
     if (email) updateData.email = email
     if (password) updateData.password = password
-    
+
     // Update user metadata
     if (full_name) {
       updateData.user_metadata = {
@@ -52,7 +54,7 @@ export async function PUT(
     }
 
     const { data, error } = await supabaseServer.auth.admin.updateUserById(
-      params.id,
+      id,
       updateData
     )
 
@@ -86,9 +88,11 @@ export async function PUT(
 // DELETE - Delete user
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
+
     const { user, error: authError } = await verifyAuth(request)
 
     if (authError || !user) {
@@ -98,7 +102,7 @@ export async function DELETE(
       )
     }
 
-    const { error } = await supabaseServer.auth.admin.deleteUser(params.id)
+    const { error } = await supabaseServer.auth.admin.deleteUser(id)
 
     if (error) {
       console.error('Delete user error:', error)
