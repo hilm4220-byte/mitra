@@ -31,18 +31,14 @@ export default function Header() {
   const router = useRouter()
   const pathname = usePathname()
 
-  // Function to navigate and scroll
   const navigateToSection = (sectionId: string) => {
     setIsMobileMenuOpen(false)
     
-    // Ensure we're in browser environment
     if (typeof window === 'undefined') return
     
-    // If we're not on homepage, go to homepage with hash
     if (pathname !== '/') {
       window.location.href = `/#${sectionId}`
     } else {
-      // If on homepage, just scroll
       setTimeout(() => {
         const element = document.getElementById(sectionId)
         if (element) {
@@ -53,7 +49,6 @@ export default function Header() {
   }
 
   useEffect(() => {
-    // Check if admin is logged in
     const token = localStorage.getItem('adminToken')
     const admin = localStorage.getItem('adminData')
     if (token && admin) {
@@ -61,7 +56,6 @@ export default function Header() {
       setAdminData(JSON.parse(admin))
     }
 
-    // Handle scroll when coming from another page with hash
     if (typeof window !== 'undefined' && window.location.hash) {
       const hash = window.location.hash.substring(1)
       setTimeout(() => {
@@ -414,26 +408,34 @@ export default function Header() {
         )}
       </div>
 
+      {/* ✅ FIXED LOGIN DIALOG - Solid Background */}
       <Dialog open={isLoginOpen} onOpenChange={setIsLoginOpen}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent 
+          className="sm:max-w-md bg-white border-2 border-gray-200 shadow-2xl"
+          style={{ 
+            backgroundColor: '#ffffff',
+            opacity: 1,
+            backdropFilter: 'none'
+          }}
+        >
           <DialogHeader>
-            <DialogTitle className="flex items-center space-x-2">
+            <DialogTitle className="flex items-center space-x-2 text-gray-900">
               <Shield className="w-5 h-5 text-green-600" />
               <span>Login Admin</span>
             </DialogTitle>
-            <DialogDescription>
+            <DialogDescription className="text-gray-600">
               Masukkan username/email dan password Anda
             </DialogDescription>
           </DialogHeader>
           <form onSubmit={handleSubmit} className="space-y-4">
             {error && (
-              <Alert variant="destructive">
-                <AlertDescription>{error}</AlertDescription>
+              <Alert variant="destructive" className="bg-red-50 border-red-200">
+                <AlertDescription className="text-red-800">{error}</AlertDescription>
               </Alert>
             )}
 
             <div className="space-y-2">
-              <Label htmlFor="header-username">Username atau Email</Label>
+              <Label htmlFor="header-username" className="text-gray-700 font-medium">Username atau Email</Label>
               <Input
                 id="header-username"
                 name="username"
@@ -443,11 +445,13 @@ export default function Header() {
                 required
                 placeholder="Masukkan username atau email"
                 disabled={isLoading}
+                className="bg-white border-gray-300 focus:border-green-500 focus:ring-green-500"
+                style={{ backgroundColor: '#ffffff' }}
               />
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="header-password">Password</Label>
+              <Label htmlFor="header-password" className="text-gray-700 font-medium">Password</Label>
               <div className="relative">
                 <Input
                   id="header-password"
@@ -458,19 +462,22 @@ export default function Header() {
                   required
                   placeholder="Masukkan password"
                   disabled={isLoading}
+                  className="bg-white border-gray-300 focus:border-green-500 focus:ring-green-500"
+                  style={{ backgroundColor: '#ffffff' }}
                 />
                 <Button
                   type="button"
                   variant="ghost"
                   size="sm"
-                  className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+                  className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-gray-100"
                   onClick={() => setShowPassword(!showPassword)}
                   disabled={isLoading}
+                  tabIndex={-1}
                 >
                   {showPassword ? (
-                    <EyeOff className="h-4 w-4" />
+                    <EyeOff className="h-4 w-4 text-gray-600" />
                   ) : (
-                    <Eye className="h-4 w-4" />
+                    <Eye className="h-4 w-4 text-gray-600" />
                   )}
                 </Button>
               </div>
@@ -478,7 +485,7 @@ export default function Header() {
 
             <Button 
               type="submit" 
-              className="w-full bg-green-600 hover:bg-green-700" 
+              className="w-full bg-green-600 hover:bg-green-700 text-white font-medium py-2.5 mt-6" 
               disabled={isLoading}
             >
               {isLoading ? (
